@@ -1,5 +1,6 @@
 Include "readini.bmx"
 Include "vector.bmx"
+Include "button.bmx"
 
 Global screenres:Int[] = GetIniResolution("options.ini")
 
@@ -14,7 +15,7 @@ SeedRnd MilliSecs()
 
 Global wheel_friction:Double = GetIniDouble("options.ini", "wheel friction")
 Global wheel_speed:Double = GetIniDouble("options.ini", "wheel speed")
-Global text_scale:Double = GetIniDouble("options.ini", "text scale")
+Global text_scale:Int = GetIniInt("options.ini", "font size")
 
 Global num_clicks = 6
 Global clicks:TSound[num_clicks]
@@ -25,116 +26,14 @@ Next
 
 Global ding_sfx:TSound = LoadSound("asset\ding.wav")
 
-Global textspacing:Double = 10
+Global textspacing:Int = GetIniInt("options.ini", "text spacing")
+Global arial:TImageFont = LoadImageFont("ARIAL.TTF", text_scale, SMOOTHFONT)
 
-Type wheel
-	Field sectors:sector[]
-	Field ReadOnly size
-	Field ReadOnly sum_fp:Double
-	Field ReadOnly num_def_p
-	Field a:Double
-	Field av:Double
-	Field pos:Vec
-	Field r
-	
-	Method New(optionsURL:String, pos:vec)
-		Self.pos = pos
-		
-		Self.sectors = LoadSectors("options.txt")
-		Self.size = sectors.length
-		Self.r = GetIniInt("options.ini", "wheel radius")
-		
-		For Local i = 0 To Self.size-1
-			If Self.sectors[i].fp <= 0 Or Self.sectors[i].fp >= 1 Then
-				Self.num_def_p :+ 1
-				Continue
-			EndIf
-			
-			Self.sum_fp :+ Self.sectors[i].fp
-		Next
-		
-		For Local i = 0 To Self.size-1
-			If Self.sectors[i].fp > 0 And Self.sectors[i].fp < 1 Then
-				Self.sectors[i].span_angle = 360.0*Self.sectors[i].fp
-			Else
-				Self.sectors[i].span_angle = 360.0*((1.0 - Self.sum_fp)/Double(Self.num_def_p))
-			EndIf
-		Next
-		
-		Self.SortSectors()
-	EndMethod
-	
-	Method draw()
-		SetColor New color3(128,128,128)
-		
-		DrawCircle(Self.pos, Self.r+5)
-		
-		Local offsetangle:Double = 0
-		For Local i = 0 To Self.size-1
-			SetColor Self.sectors[i].color
-			
-			Self.sectors[i].angle = Self.a + offsetangle
-			
-			drawsector(New vec(w/2, h/2), Self.r, Self.sectors[i].angle, Self.sectors[i].span_angle)
+SetImageFont arial
 
-			offsetangle :+ Self.sectors[i].span_angle
-		Next
+Include "wheel.bmx"
 
-		SetColor New color3(255,255,255)
-		
-		If spinning Then
-			chosen_sector_content = PointHoveringSector(spinner, arrow_point).content
-			If old <> chosen_sector_content Then
-				old = chosen_sector_content
-				PlaySound(clicks[Rand(0,num_clicks-1)])
-			EndIf
-		EndIf
-	EndMethod
-	
-	Method spin(initial_angle:Double = 0)
-		Self.a = initial_angle
-		Self.av = wheel_speed
-	EndMethod
-	
-	Method update()
-		Self.a :+ Self.av*dt
-		
-		Self.av :* wheel_friction
-		
-		If Self.a > 360 Then Self.a = 0
-		If Self.a < 0 Then Self.a = 360
-	EndMethod
-	
-	Method SortSectors()
-		For Local i = 0 To Self.size - 1
-			For Local j = 0 To Self.size - i - 2
-				Local a:Double = Self.sectors[j].fp
-				Local b:Double = Self.sectors[j+1].fp
-				
-				If a > b Then
-					Local temp:sector = Self.sectors[j]
-					
-					Self.sectors[j] = Self.sectors[j+1]
-					Self.sectors[j+1] = temp
-				EndIf
-			Next
-		Next	
-	EndMethod
-EndType
-
-Type sector
-	Field content:String
-	Field color:color3
-	Field fp:Double
-	Field span_angle:Double
-	Field angle:Double
-	
-	Method New(content:String)
-		Self.content = content
-	EndMethod
-EndType
-
-Type color3
+Type Color3
 	Field r,g,b
 	
 	Method New(r = 0, g = 0, b = 0)
@@ -142,10 +41,22 @@ Type color3
 		Self.g = g
 		Self.b = b
 	EndMethod
+	
+	Method Operator*:Color3(s:Double)
+		Local r:Double = Double(Self.r)*s
+		Local g:Double = Double(Self.g)*s
+		Local b:Double = Double(Self.b)*s
+		
+		Return New Color3(Int(r), Int(g), Int(b))
+	EndMethod
 EndType
 
-Global spinner:wheel = New wheel("options.txt", New vec(w/2,h/2))
+Global COLOR_RED:Color3 = New color3(200,0,0)
+Global COLOR_GREEN:Color3 = New color3(0,200,0)
+
+Global spinner:wheel = New wheel("wheels\options_test.txt", New vec(w/2,h/2))
 Global spinning = False
+Global stopping = False
 Global chosen_sector_content:String
 Global old:String
 Global arrow_point:vec = spinner.pos + New vec(spinner.r - 5, 0)
@@ -156,9 +67,29 @@ Global fps
 Global framecount
 Global oldtime = MilliSecs()
 
-SetBlend ALPHABLEND
+Global spinbutton:button = New button(New vec(w/2, h/2 + spinner.r + 40), New vec(0,0), "Spin")
+spinbutton.pos.x = w/2 - spinbutton.size.x/2
 
+Global stopbutton:button = New button(New vec(w/2, spinbutton.pos.y+spinbutton.size.y+10), New vec(0,0), "Stop")
+stopbutton.pos.x = w/2 - stopbutton.size.x/2
+stopbutton.visible = False
+stopbutton.active = False
+
+Global refreshbutton:button = New button(New vec(10, 100), New vec(0,0), "Refresh List")
+Global extent_top
+Global extent_bottom
+
+Global bar:scrollbar = New scrollbar
+
+Global FileList:String[]
+Global filebuttons:button[]
+Global selected_index = 0
+
+SetBlend ALPHABLEND
 SetClsColor 32,32,32
+
+refreshfilelist()
+
 While Not KeyDown(KEY_ESCAPE)
 	framecount :+ 1
 	
@@ -175,32 +106,118 @@ While Not KeyDown(KEY_ESCAPE)
 	spinner.update()
 	spinner.draw()
 	
-	If KeyHit(KEY_SPACE) And Not spinning Then
+	If (KeyHit(KEY_SPACE) Or spinbutton.clicked) And Not spinning Then
 		spinning = True
 		spinner.spin(Rnd(0,360))
+		spinbutton.visible = False
+		spinbutton.active = False
+		stopbutton.visible = True
+		stopbutton.active = True
+	EndIf
+	
+	If stopbutton.clicked Then
+		stopping = True
+		stopbutton.visible = False
+		stopbutton.active = False
 	EndIf
 	
 	If Abs(spinner.av) <= 1 And spinning Then
 		spinning = False
+		stopping = False
 		spinner.av = 0
 		chosen_sector_content = PointHoveringSector(spinner, arrow_point).content
 		PlaySound(ding_sfx)
+		spinbutton.visible = True
+		spinbutton.active = True
+		stopbutton.visible = False
+		stopbutton.active = False
 	EndIf
 	
-	DrawText "FPS: "+fps,0,0
-	DrawText "Spinning = "+spinning,0,10
-	DrawText "Chosen option: "+chosen_sector_content,w/2 - TextWidth("Chosen option: "+chosen_sector_content)/2,20
+	If Not spinning Then
+		bar.update()
+	EndIf
+	
+	If refreshbutton.clicked Then
+		RefreshFileList()
+	EndIf
 	
 	SetColor 0,0,0
 	SetLineWidth 5
 	DrawLine Float(arrow_point.x), Float(arrow_point.y), Float(arrow_point.x + 30), Float(arrow_point.y)
 	SetLineWidth 1
 	
+	spinbutton.update()
+	stopbutton.update()
+	refreshbutton.update()
+	
+	HandleFileList()
+	DrawUi()
 	DrawTip()
+
+	FlushMouse()
 	
 	Flip
 Wend
 End
+
+Function RefreshFileList()
+	selected_index = -1
+	Filelist:String[] = LoadDir("wheels")
+	
+	filebuttons = New button[filelist.length]
+	
+	filebuttons[0] = New button(New vec(10,refreshbutton.pos.y), New vec(10+TextWidth(filelist[0]),10+TextHeight(filelist[0])), filelist[0])
+	filebuttons[0].pos.y = refreshbutton.pos.y+10+filebuttons[0].size.y
+	filebuttons[0].bar = bar
+	For Local i = 1 To filelist.length - 1
+		filebuttons[i] = New button(New vec(10,filebuttons[i-1].pos.y+filebuttons[i-1].size.y+10), New vec(0,0), filelist[i])
+		filebuttons[i].bar = bar
+		
+		If i = 0 Then
+			extent_top = filebuttons[i].pos.y - bar.yoffset
+		ElseIf i = filelist.length - 1 Then
+			extent_bottom = filebuttons[i].pos.y+filebuttons[i].size.y - bar.yoffset*filelist.length
+		EndIf
+	Next
+EndFunction
+
+Function HandleFileList()
+	For Local i = 0 To filelist.length - 1
+		If spinning Then Continue
+	
+		If filebuttons[i].clicked And selected_index <> i Then
+			selected_index = i
+			
+			spinner = New wheel("wheels\"+filelist[selected_index],New vec(w/2, h/2)) 
+		EndIf
+		
+		Local c:Color3 = filebuttons[i].basecolor
+		If i = selected_index Then
+			filebuttons[i].basecolor = c*0.5
+			filebuttons[i].active = False
+		Else
+			filebuttons[i].active = True
+		EndIf
+		
+		filebuttons[i].draw()
+		filebuttons[i].basecolor = c
+		filebuttons[i].update()
+	Next
+	
+	SetColor 32,32,32
+	DrawRect 0,0,250,150
+	
+	refreshbutton.draw()
+EndFunction
+
+Function DrawUi()
+	SetColor 255,255,255
+	DrawText "FPS: "+fps,0,0
+	DrawText "Chosen option: "+chosen_sector_content,w/2 - TextWidth("Chosen option: "+chosen_sector_content)/2,20
+	
+	spinbutton.draw()
+	stopbutton.draw()
+EndFunction
 
 Function Atan3:Double(y:Double,x:Double)
 	Local a:Double = ATan2(y,x)
@@ -268,7 +285,7 @@ Function PushSector:Sector[](Array:Sector[], sector:Sector)
 		temp[i] = array[i]
 	Next
 	
-	temp[temp.length-1] = sector
+	temp[array.length] = sector
 	
 	Return temp
 EndFunction
@@ -279,7 +296,12 @@ Function LoadSectors:Sector[](url:String)
 	Local sectors:sector[]
 	
 	While Not Eof(file)
-		Local line:String[] = ReadLine(file).split(";")
+		Local raw:String = ReadLine(file)
+		If Len(Trim(raw)) >= 2 And Left(Trim(raw),2) = "//" Then Continue
+		If Len(Trim(raw)) = 0 Then Continue
+
+		Local line:String[] = raw.split("//")[0].split(";")
+
 		Local s:sector = New sector(line[0])
 		
 		Local temp:String[] = RemoveParenthesis(line[1]).split(",")

@@ -35,10 +35,11 @@ Function GetIniString:String(url:String, name:String)
 	
 	While Not Eof(stream)
 		Local line:String = ReadLine(stream)
+		If Len(Trim(line)) >= 2 And Left(Trim(line),2) = "//" Then Continue
+		If Len(Trim(line)) = 0 Then Continue
+		If Trim(Lower(RemoveBrackets(line))).split("//")[0].Replace(" ","") <> Lower(name).Replace(" ","") Then Continue
 		
-		If Trim(Lower(RemoveBrackets(line))) <> Lower(name) Then Continue
-		
-		str = Trim(ReadLine(stream))
+		str = Trim(ReadLine(stream)).split("//")[0]
 		
 		Exit
 	Wend
