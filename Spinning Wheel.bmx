@@ -85,8 +85,10 @@ Global FileList:String[]
 Global filebuttons:button[]
 Global selected_index = 0
 
+Global backgroundcolor:color3 = GetIniColor3("options.ini", "background color")
+
 SetBlend ALPHABLEND
-SetClsColor 32,32,32
+SetClsColor backgroundcolor
 
 refreshfilelist()
 
@@ -113,14 +115,12 @@ While Not KeyDown(KEY_ESCAPE)
 		spinbutton.active = False
 		stopbutton.visible = True
 		stopbutton.active = True
-	EndIf
-	
-	If stopbutton.clicked Then
+	ElseIf (KeyHit(KEY_SPACE) Or stopbutton.clicked) And spinning Then
 		stopping = True
 		stopbutton.visible = False
 		stopbutton.active = False
 	EndIf
-	
+
 	If Abs(spinner.av) <= 1 And spinning Then
 		spinning = False
 		stopping = False
@@ -159,6 +159,10 @@ While Not KeyDown(KEY_ESCAPE)
 	Flip
 Wend
 End
+
+Function SetClsColor(color:color3)
+	SetClsColor color.r,color.g,color.b
+EndFunction
 
 Function RefreshFileList()
 	selected_index = -1
@@ -204,7 +208,7 @@ Function HandleFileList()
 		filebuttons[i].update()
 	Next
 	
-	SetColor 32,32,32
+	SetColor backgroundcolor
 	DrawRect 0,0,250,150
 	
 	refreshbutton.draw()
