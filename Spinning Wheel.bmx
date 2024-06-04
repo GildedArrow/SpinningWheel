@@ -115,12 +115,14 @@ While Not KeyDown(KEY_ESCAPE)
 		spinbutton.active = False
 		stopbutton.visible = True
 		stopbutton.active = True
-	ElseIf (KeyHit(KEY_SPACE) Or stopbutton.clicked) And spinning Then
+	EndIf
+	
+	If stopbutton.clicked Or KeyDown(KEY_SPACE) And spinning Then
 		stopping = True
 		stopbutton.visible = False
 		stopbutton.active = False
 	EndIf
-
+	
 	If Abs(spinner.av) <= 1 And spinning Then
 		spinning = False
 		stopping = False

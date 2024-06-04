@@ -1,5 +1,5 @@
-Function GetIniColor3:Color3(url:String, name:String)
-	Local raw:String[] = GetIniString(url, name).split(",")
+Function GetIniColor3:Color3(url:String)
+	Local raw:String[] = GetIniString(url, "resolution").split(",")
 	Local colors:Color3 = New Color3
 	
 	colors.r = Int(raw[0])
